@@ -15,6 +15,13 @@ use tauri_runtime::{
 };
 use url::Url;
 
+#[cfg(feature = "tauri")]
+pub fn capture_webview(webview: &tauri::Webview<ElectronRuntime>) -> tauri::Result<String> {
+  crate::browser::route(webview, |view| {
+    view.webview_call(electron_rs::rpc::webview::Capture { webview_id: view.id })
+  })
+}
+
 #[derive(Debug, Clone)]
 pub struct ElectronWebviewDispatcher {
   pub(crate) id: u32,

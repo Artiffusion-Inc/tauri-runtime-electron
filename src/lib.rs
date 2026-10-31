@@ -60,6 +60,8 @@ pub use runtime::{
   register_custom_protocol_scheme, Electron, ElectronRuntime, EventProxy, RuntimeContext,
 };
 pub use webview::ElectronWebviewDispatcher;
+#[cfg(feature = "tauri")]
+pub use webview::capture_webview;
 pub use window::ElectronWindowDispatcher;
 pub use window_builder::ElectronWindowBuilder;
 pub use window_handle::ElectronRuntimeHandle;
