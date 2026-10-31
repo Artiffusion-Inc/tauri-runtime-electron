@@ -50,7 +50,7 @@ pub enum NewWindowResponse {
 
 thread_local! {
   static OPENER: RefCell<Option<NewWindowOpener>> = const { RefCell::new(None) };
-  static WEBVIEW: RefCell<Option<ElectronWebviewDispatcher>> = const { RefCell::new(None) };
+  pub(crate) static WEBVIEW: RefCell<Option<ElectronWebviewDispatcher>> = const { RefCell::new(None) };
 }
 
 /// Build a destination using the ordinary Tauri builder inside `build`.

@@ -8,6 +8,12 @@ An experimental Tauri 2 runtime that runs windows and webviews in Electron inste
 
 `main` targets **Tauri 2 / tauri-runtime 2.12**; `next` tracks **Tauri 3.0.0-alpha** with an incompatible contract. Git-only, not on crates.io — pin a revision or tag.
 
+## Browser guests and loading
+
+Build a trusted native child webview inside `with_browser_host(label, || builder.build())`, then use `acquire_browser_guest(&webview, workspace) -> tauri::Result<BrowserGuestReservation>`, `release_browser_guest(&webview, lease) -> tauri::Result<()>`, and `on_browser_open_requested(&webview, handler) -> tauri::Result<()>` (`handler: Fn(String, String) + Send + 'static`). The reservation has string `lease` and `partition` fields. These APIs require the `tauri` feature and register no renderer commands or Tauri permissions. Browser content receives neither Tauri preload nor IPC identity. Do not combine this host with `with_guest`: Electron intentionally disables recursive `<webview>` elements.
+
+`on_webview_load_state(&webview, handler)` reports `WebviewLoadState::{Started, Finished, Failed, ProcessGone}` across platforms and replays the latest observed state when registered. A later registration replaces the callback; webview destruction removes the callback and cached state. Main-frame aborted navigations do not report `Failed`.
+
 ## Install
 
 ```toml

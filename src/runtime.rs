@@ -252,6 +252,9 @@ pub struct RuntimeContext {
   /// HWND/X11 IDs permit selected cross-process operations; AppKit pointers
   /// cannot be borrowed from Electron's process.
   native_handles: Arc<RefCell<HashMap<u32, isize>>>,
+  pub(crate) load_states: Arc<RefCell<HashMap<u32, crate::load_state::WebviewLoadState>>>,
+  pub(crate) load_state_handlers: Arc<RefCell<HashMap<u32, Rc<crate::load_state::LoadHandler>>>>,
+  pub(crate) browser_open_handlers: Arc<RefCell<HashMap<u32, Rc<crate::browser::OpenHandler>>>>,
   pub(crate) new_window_handlers:
     Arc<RefCell<HashMap<u32, Rc<crate::new_window::NewWindowHandler>>>>,
   /// Receives `window.ipc.postMessage` traffic from `<webview>` guests.
@@ -466,6 +469,9 @@ impl RuntimeContext {
     self.ipc_handlers.borrow_mut().remove(&serial);
     self.webview_handlers.borrow_mut().remove(&serial);
     self.new_window_handlers.borrow_mut().remove(&serial);
+    self.browser_open_handlers.borrow_mut().remove(&serial);
+    self.load_state_handlers.borrow_mut().remove(&serial);
+    self.load_states.borrow_mut().remove(&serial);
     self.policy_handlers.borrow_mut().remove(&serial);
     self.webview_origins.borrow_mut().remove(label);
     remove_webview_protocols(&mut self.protocol_handlers.borrow_mut(), serial, label);
@@ -913,6 +919,9 @@ impl ElectronRuntime {
       webview_origins: Default::default(),
       policy_handlers: Default::default(),
       native_handles: Default::default(),
+      load_states: Default::default(),
+      load_state_handlers: Default::default(),
+      browser_open_handlers: Default::default(),
       new_window_handlers: Default::default(),
       guest_ipc_handler: Default::default(),
     };
@@ -1374,6 +1383,14 @@ impl ElectronRuntime {
             continue;
           }
         }
+        if let (Some(state), Some(id)) = (
+          event["event"].as_str().and_then(crate::load_state::WebviewLoadState::from_event),
+          event["params"]["webviewId"].as_u64().and_then(|id| u32::try_from(id).ok()),
+        ) {
+          self.context.load_states.borrow_mut().insert(id, state);
+          let handler = self.context.load_state_handlers.borrow().get(&id).cloned();
+          if let Some(handler) = handler { handler(state); }
+        }
         match event["event"].as_str() {
           #[cfg(windows)]
           Some("menu.command") => {
@@ -1445,6 +1462,16 @@ impl ElectronRuntime {
                 label,
                 event: WindowEvent::ThemeChanged(theme),
               });
+            }
+          }
+          Some("browser.openRequested") => {
+            let params = &event["params"];
+            if let (Some(id), Some(lease), Some(url)) = (
+              params["webviewId"].as_u64().and_then(|id| u32::try_from(id).ok()),
+              params["lease"].as_str(), params["url"].as_str(),
+            ) {
+              let handler = self.context.browser_open_handlers.borrow().get(&id).cloned();
+              if let Some(handler) = handler { handler(lease.to_owned(), url.to_owned()); }
             }
           }
           Some("webview.attached") => {
@@ -2496,6 +2523,7 @@ fn webview_create_payload<T: UserEvent>(
     background_color: attributes.background_color.map(|color| electron_rs::rpc::Color::Rgba([color.0, color.1, color.2, color.3])),
     policy: Some(policy),
     additional: std::collections::BTreeMap::from([
+      ("browserHost".into(), json!(crate::guest::take_browser_host(&pending.label))),
       ("dragDropEnabled".into(), json!(attributes.drag_drop_handler_enabled)),
       ("zoomHotkeysEnabled".into(), json!(attributes.zoom_hotkeys_enabled)),
       ("scrollBarStyle".into(), json!(scroll_bar_style)),

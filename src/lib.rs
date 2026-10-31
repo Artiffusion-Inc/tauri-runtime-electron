@@ -22,11 +22,16 @@
 //! the independent `electron-rs` crate.
 
 mod app_icon;
+mod browser;
 mod command_bridge;
 mod devtools;
 mod environment;
 mod guest;
 mod locale;
+mod load_state;
+pub use load_state::WebviewLoadState;
+#[cfg(feature = "tauri")]
+pub use load_state::on_webview_load_state;
 pub mod new_window;
 mod platform;
 mod rpc;
@@ -44,7 +49,10 @@ pub use command_bridge::init;
 pub use command_bridge::ElectronClient;
 pub use electron_rs::{Command, CommandChunk, OutputStream};
 pub use environment::DebugEnvironment;
-pub use guest::with_guest;
+pub use guest::{with_guest, with_browser_host};
+pub use browser::BrowserGuestReservation;
+#[cfg(feature = "tauri")]
+pub use browser::{acquire_browser_guest, release_browser_guest, on_browser_open_requested};
 #[cfg(feature = "tauri")]
 pub use new_window::on_new_window;
 pub use new_window::{with_opener, NewWindowFeatures, NewWindowOpener, NewWindowResponse};
