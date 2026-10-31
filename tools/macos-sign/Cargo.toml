@@ -1,0 +1,14 @@
+[package]
+name = "electron-macos-sign"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+plist = "1"
+tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri-macos-sign = "=2.4.3"
