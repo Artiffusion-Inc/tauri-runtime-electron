@@ -9,7 +9,7 @@ pub type ElectronClient = std::sync::Arc<electron_rs::Electron>;
 #[cfg(feature = "tauri")]
 thread_local! {
   static CLIENT: std::cell::RefCell<Option<ElectronClient>> = const { std::cell::RefCell::new(None) };
-  static READY: std::cell::RefCell<std::collections::HashMap<usize, (std::sync::Weak<electron_rs::Electron>, std::collections::HashSet<String>)>> = Default::default();
+  static READY: std::cell::RefCell<std::collections::HashMap<usize, (std::sync::Weak<electron_rs::Electron>, std::collections::HashSet<u32>)>> = Default::default();
 }
 
 #[cfg(feature = "tauri")]
@@ -25,13 +25,13 @@ pub(crate) fn with_client<R>(client: ElectronClient, task: impl FnOnce() -> R) -
 }
 
 #[cfg(feature = "tauri")]
-pub(crate) fn webview_ready(client: &ElectronClient, label: &str) -> bool {
+pub(crate) fn webview_ready(client: &ElectronClient, id: u32) -> bool {
   READY.with(|ready| {
     let mut ready = ready.borrow_mut();
     ready.retain(|_, (client, _)| client.strong_count() > 0);
     ready.get(&(std::sync::Arc::as_ptr(client) as usize))
       .filter(|(registered, _)| registered.ptr_eq(&std::sync::Arc::downgrade(client)))
-      .is_none_or(|(_, labels)| labels.contains(label))
+      .is_none_or(|(_, ids)| ids.contains(&id))
   })
 }
 
@@ -46,10 +46,10 @@ pub(crate) fn track_client(client: &ElectronClient) {
 }
 
 #[cfg(feature = "tauri")]
-pub(crate) fn set_webview_ready(client: &ElectronClient, label: &str, value: bool) {
+pub(crate) fn set_webview_ready(client: &ElectronClient, id: u32, value: bool) {
   READY.with(|ready| {
     if let Some((_, labels)) = ready.borrow_mut().get_mut(&(std::sync::Arc::as_ptr(client) as usize)) {
-      if value { labels.insert(label.to_owned()); } else { labels.remove(label); }
+      if value { labels.insert(id); } else { labels.remove(&id); }
     }
   });
 }
@@ -116,10 +116,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<crate::ElectronRuntime> {
     })
     .on_webview_ready(|webview| {
       let client = webview.state::<ElectronClient>().inner().clone();
-      let label = webview.label().to_owned();
-      let original = webview.clone();
       if let Err(error) = webview.run_on_main_thread(move || {
-        if original.url().is_ok() { set_webview_ready(&client, &label, true); }
+        if let Some(owner) = crate::new_window::current_webview()
+          .filter(|owner| owner.context.window_for_webview(owner.id).is_ok()) {
+          set_webview_ready(&client, owner.id, true);
+        }
       }) {
         eprintln!("[electron] failed to mark Tauri webview ready: {error}");
       }

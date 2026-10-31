@@ -71,6 +71,11 @@ pub(crate) fn take_opener() -> Option<NewWindowOpener> {
   OPENER.with(|slot| slot.borrow_mut().take())
 }
 
+#[cfg(feature = "tauri")]
+pub(crate) fn current_webview() -> Option<ElectronWebviewDispatcher> {
+  WEBVIEW.with(|slot| slot.borrow().clone())
+}
+
 pub(crate) fn with_webview<R>(webview: ElectronWebviewDispatcher, task: impl FnOnce() -> R) -> R {
   struct Restore(Option<ElectronWebviewDispatcher>);
   impl Drop for Restore {

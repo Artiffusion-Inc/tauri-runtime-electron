@@ -462,7 +462,7 @@ impl RuntimeContext {
 
   fn forget_webview_handlers(&self, serial: u32, label: &str) {
     #[cfg(feature = "tauri")]
-    crate::command_bridge::set_webview_ready(&self.ipc.client(), label, false);
+    crate::command_bridge::set_webview_ready(&self.ipc.client(), serial, false);
     self.ipc_handlers.borrow_mut().remove(&serial);
     self.webview_handlers.borrow_mut().remove(&serial);
     self.new_window_handlers.borrow_mut().remove(&serial);
@@ -1367,8 +1367,8 @@ impl ElectronRuntime {
         #[cfg(feature = "tauri")]
         if event["event"] == "ipc.message" || (event["event"] == "protocol.request" && event["params"]["scheme"] == "ipc") {
           let owner = event["params"]["webviewId"].as_u64().and_then(|id| u32::try_from(id).ok());
-          let label = owner.and_then(|owner| self.context.protocol_handlers.borrow().get(&("ipc".into(), Some(owner))).map(|(label, _)| label.clone()));
-          if label.is_some_and(|label| !crate::command_bridge::webview_ready(&self.context.ipc.client(), &label)) {
+          let owner = owner.filter(|owner| self.context.protocol_handlers.borrow().contains_key(&("ipc".into(), Some(*owner))));
+          if owner.is_some_and(|owner| !crate::command_bridge::webview_ready(&self.context.ipc.client(), owner)) {
             let mut pending = self.pending_ipc.borrow_mut();
             if pending.len() < 256 { pending.push_back(event); } else { self.reject_ipc(&event, 503); }
             continue;
@@ -2722,7 +2722,7 @@ mod tests {
 
   #[cfg(feature = "tauri")]
   #[test]
-  fn ipc_waits_for_manager_across_iterations() {
+  fn ipc_readiness_waits_for_manager_across_iterations() {
     let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join(format!("electron-ipc-readiness-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
     std::fs::create_dir_all(&scratch).unwrap();
     struct Scratch(PathBuf);
@@ -2735,7 +2735,13 @@ mod tests {
     impl Drop for Shutdown { fn drop(&mut self) { self.0.shutdown(); } }
     let _shutdown = Shutdown(runtime.context.ipc.clone());
     let client = runtime.context.ipc.client();
+    assert!(crate::command_bridge::webview_ready(&client, 7));
     crate::command_bridge::track_client(&client);
+    crate::command_bridge::set_webview_ready(&client, 8, true);
+    crate::command_bridge::set_webview_ready(&client, 7, true);
+    crate::command_bridge::set_webview_ready(&client, 7, false);
+    assert!(!crate::command_bridge::webview_ready(&client, 7));
+    assert!(crate::command_bridge::webview_ready(&client, 8));
     let calls = Arc::new(AtomicU32::new(0));
     let called = calls.clone();
     runtime.context.protocol_handlers.borrow_mut().insert(
@@ -2752,12 +2758,12 @@ mod tests {
     runtime.pump::<(), _>(|_| {}, true);
     runtime.pump::<(), _>(|_| {}, true);
     assert_eq!(calls.load(Ordering::Relaxed), 0, "IPC must wait for Tauri registration across iterations");
-    crate::command_bridge::set_webview_ready(&client, "pet", true);
+    crate::command_bridge::set_webview_ready(&client, 7, true);
     runtime.pump::<(), _>(|_| {}, true);
     runtime.pump::<(), _>(|_| {}, true);
     assert_eq!(calls.load(Ordering::Relaxed), 2, "registered IPC is delivered once");
     runtime.context.forget_webview_handlers(7, "pet");
-    assert!(!crate::command_bridge::webview_ready(&client, "pet"));
+    assert!(!crate::command_bridge::webview_ready(&client, 7));
     sender.send(request).unwrap();
     runtime.pump::<(), _>(|_| {}, true);
     assert_eq!(calls.load(Ordering::Relaxed), 2, "closed owner must not dispatch");
