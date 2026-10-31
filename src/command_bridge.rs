@@ -9,6 +9,7 @@ pub type ElectronClient = std::sync::Arc<electron_rs::Electron>;
 #[cfg(feature = "tauri")]
 thread_local! {
   static CLIENT: std::cell::RefCell<Option<ElectronClient>> = const { std::cell::RefCell::new(None) };
+  static READY: std::cell::RefCell<std::collections::HashMap<usize, (std::sync::Weak<electron_rs::Electron>, std::collections::HashSet<String>)>> = Default::default();
 }
 
 #[cfg(feature = "tauri")]
@@ -21,6 +22,36 @@ pub(crate) fn with_client<R>(client: ElectronClient, task: impl FnOnce() -> R) -
   }
   let _restore = Restore(CLIENT.with(|slot| slot.replace(Some(client))));
   task()
+}
+
+#[cfg(feature = "tauri")]
+pub(crate) fn webview_ready(client: &ElectronClient, label: &str) -> bool {
+  READY.with(|ready| {
+    let mut ready = ready.borrow_mut();
+    ready.retain(|_, (client, _)| client.strong_count() > 0);
+    ready.get(&(std::sync::Arc::as_ptr(client) as usize))
+      .filter(|(registered, _)| registered.ptr_eq(&std::sync::Arc::downgrade(client)))
+      .is_none_or(|(_, labels)| labels.contains(label))
+  })
+}
+
+#[cfg(feature = "tauri")]
+pub(crate) fn track_client(client: &ElectronClient) {
+  READY.with(|ready| {
+    let mut ready = ready.borrow_mut();
+    ready.retain(|_, (client, _)| client.strong_count() > 0);
+    ready.entry(std::sync::Arc::as_ptr(client) as usize)
+      .or_insert_with(|| (std::sync::Arc::downgrade(client), Default::default()));
+  });
+}
+
+#[cfg(feature = "tauri")]
+pub(crate) fn set_webview_ready(client: &ElectronClient, label: &str, value: bool) {
+  READY.with(|ready| {
+    if let Some((_, labels)) = ready.borrow_mut().get_mut(&(std::sync::Arc::as_ptr(client) as usize)) {
+      if value { labels.insert(label.to_owned()); } else { labels.remove(label); }
+    }
+  });
 }
 
 /// Register this app's existing Electron client before application setup.
@@ -53,7 +84,11 @@ pub fn init() -> tauri::plugin::TauriPlugin<crate::ElectronRuntime> {
       // The public app API reaches this exact runtime handle, which scopes CLIENT
       // to this task. Runtime UI-thread tasks execute inline, including in setup.
       app.run_on_main_thread(move || {
-        let _ = sender.send(CLIENT.with(|slot| slot.borrow().clone()));
+        let client = CLIENT.with(|slot| slot.borrow().clone());
+        if let Some(client) = &client {
+          track_client(client);
+        }
+        let _ = sender.send(client);
       })?;
       let client = receiver
         .recv_timeout(crate::runtime::IPC_TIMEOUT)
@@ -78,6 +113,16 @@ pub fn init() -> tauri::plugin::TauriPlugin<crate::ElectronRuntime> {
         );
       }
       Ok(())
+    })
+    .on_webview_ready(|webview| {
+      let client = webview.state::<ElectronClient>().inner().clone();
+      let label = webview.label().to_owned();
+      let original = webview.clone();
+      if let Err(error) = webview.run_on_main_thread(move || {
+        if original.url().is_ok() { set_webview_ready(&client, &label, true); }
+      }) {
+        eprintln!("[electron] failed to mark Tauri webview ready: {error}");
+      }
     })
     .build()
 }

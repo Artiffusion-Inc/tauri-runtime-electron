@@ -40,7 +40,7 @@ use http::{Request, Response};
 use std::{
   any::Any,
   cell::RefCell,
-  collections::HashMap,
+  collections::{HashMap, VecDeque},
   fmt,
   path::{Path, PathBuf},
   rc::Rc,
@@ -461,6 +461,8 @@ impl RuntimeContext {
   }
 
   fn forget_webview_handlers(&self, serial: u32, label: &str) {
+    #[cfg(feature = "tauri")]
+    crate::command_bridge::set_webview_ready(&self.ipc.client(), label, false);
     self.ipc_handlers.borrow_mut().remove(&serial);
     self.webview_handlers.borrow_mut().remove(&serial);
     self.new_window_handlers.borrow_mut().remove(&serial);
@@ -879,6 +881,7 @@ pub struct ElectronRuntime {
   run_rx: Receiver<Message>,
   /// Events pushed by the Electron process (`window.closed`, `ipc.closed`, ...).
   event_rx: Receiver<Value>,
+  pending_ipc: RefCell<VecDeque<Value>>,
 }
 
 impl ElectronRuntime {
@@ -918,6 +921,7 @@ impl ElectronRuntime {
       context,
       run_rx: rx,
       event_rx,
+      pending_ipc: Default::default(),
     }
   }
 
@@ -1331,6 +1335,19 @@ impl<T: UserEvent> Runtime<T> for ElectronRuntime {
 }
 
 impl ElectronRuntime {
+  fn reject_ipc(&self, event: &Value, status: u16) {
+    let params = &event["params"];
+    let result = if event["event"] == "protocol.request" {
+      let Some(id) = params["id"].as_u64() else { return; };
+      self.context.ipc.call(rpc::ProtocolRespond { id, status: Some(status), headers: Default::default(), body: None })
+    } else {
+      let body = serde_json::from_str::<Value>(params["body"].as_str().unwrap_or_default()).unwrap_or_default();
+      let (Some(error), Some(webview_id)) = (body["error"].as_u64(), params["webviewId"].as_u64().and_then(|id| u32::try_from(id).ok())) else { return; };
+      self.context.ipc.notify(rpc::EvalScript { webview_id, script: format!("window.__TAURI_INTERNALS__.runCallback({error}, \"IPC rejected: {status}\")") })
+    };
+    if let Err(error) = result { eprintln!("[electron] failed to reject IPC: {error}"); }
+  }
+
   fn pump<T: UserEvent, F: FnMut(RunEvent<T>)>(&self, mut callback: F, once: bool) -> i32 {
     self.is_running.store(true, Ordering::Relaxed);
     init_native_ui();
@@ -1339,14 +1356,24 @@ impl ElectronRuntime {
     }
 
     let exit_code = 'event_loop: loop {
-      // Events pushed by the Electron process.
+      let mut pending = std::mem::take(&mut *self.pending_ipc.borrow_mut());
       loop {
-        let event = match self.event_rx.try_recv() {
+        let event = match pending.pop_front().map(Ok).unwrap_or_else(|| self.event_rx.try_recv()) {
           Ok(event) => event,
           Err(std::sync::mpsc::TryRecvError::Empty) => break,
           // A full event queue can drop ipc.closed; disconnect is definitive.
           Err(std::sync::mpsc::TryRecvError::Disconnected) => break 'event_loop 0,
         };
+        #[cfg(feature = "tauri")]
+        if event["event"] == "ipc.message" || (event["event"] == "protocol.request" && event["params"]["scheme"] == "ipc") {
+          let owner = event["params"]["webviewId"].as_u64().and_then(|id| u32::try_from(id).ok());
+          let label = owner.and_then(|owner| self.context.protocol_handlers.borrow().get(&("ipc".into(), Some(owner))).map(|(label, _)| label.clone()));
+          if label.is_some_and(|label| !crate::command_bridge::webview_ready(&self.context.ipc.client(), &label)) {
+            let mut pending = self.pending_ipc.borrow_mut();
+            if pending.len() < 256 { pending.push_back(event); } else { self.reject_ipc(&event, 503); }
+            continue;
+          }
+        }
         match event["event"].as_str() {
           #[cfg(windows)]
           Some("menu.command") => {
@@ -1744,6 +1771,7 @@ impl ElectronRuntime {
               .min_by_key(|((_, owner), _)| *owner)
               .map(|(_, handler)| handler.clone())
             else {
+              if scheme == "ipc" { self.reject_ipc(&event, 410); }
               eprintln!("[electron] no protocol handler for {scheme}");
               continue;
             };
@@ -1886,6 +1914,7 @@ impl ElectronRuntime {
       std::thread::sleep(Duration::from_millis(10));
     };
 
+    self.pending_ipc.borrow_mut().clear();
     self.is_running.store(false, Ordering::Relaxed);
     eprintln!("[electron] run loop finished, shutting the runtime down");
     // Tauri's exit cleanup still calls into the windows (hide/close), so it has
@@ -2690,6 +2719,49 @@ fn pump_thread_messages() {}
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[cfg(feature = "tauri")]
+  #[test]
+  fn ipc_waits_for_manager_across_iterations() {
+    let scratch = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join(format!("electron-ipc-readiness-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    std::fs::create_dir_all(&scratch).unwrap();
+    struct Scratch(PathBuf);
+    impl Drop for Scratch { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+    let _scratch = Scratch(scratch.clone());
+    let mut electron = Electron::new().arg(format!("--user-data-dir={}", scratch.display()));
+    if let Some(binary) = std::env::var_os("TAURI_RUNTIME_ELECTRON_TEST_BINARY") { electron = electron.binary(binary); }
+    let mut runtime = ElectronRuntime::start(electron, DEFAULT_SCHEMES).unwrap();
+    struct Shutdown(Arc<ElectronProcess>);
+    impl Drop for Shutdown { fn drop(&mut self) { self.0.shutdown(); } }
+    let _shutdown = Shutdown(runtime.context.ipc.clone());
+    let client = runtime.context.ipc.client();
+    crate::command_bridge::track_client(&client);
+    let calls = Arc::new(AtomicU32::new(0));
+    let called = calls.clone();
+    runtime.context.protocol_handlers.borrow_mut().insert(
+      ("ipc".into(), Some(7)),
+      ("pet".into(), Rc::new(move |_, _, _| { called.fetch_add(1, Ordering::Relaxed); })),
+    );
+    let posted = calls.clone();
+    runtime.context.ipc_handlers.borrow_mut().insert(7, Rc::new(move |_| { posted.fetch_add(1, Ordering::Relaxed); }));
+    let (sender, receiver) = channel();
+    runtime.event_rx = receiver;
+    let request = json!({"event":"protocol.request","params":{"id":77,"scheme":"ipc","webviewId":7,"method":"POST","uri":"ipc://localhost/probe"}});
+    sender.send(request.clone()).unwrap();
+    sender.send(json!({"event":"ipc.message","params":{"webviewId":7,"body":"{}","url":"tauri://localhost"}})).unwrap();
+    runtime.pump::<(), _>(|_| {}, true);
+    runtime.pump::<(), _>(|_| {}, true);
+    assert_eq!(calls.load(Ordering::Relaxed), 0, "IPC must wait for Tauri registration across iterations");
+    crate::command_bridge::set_webview_ready(&client, "pet", true);
+    runtime.pump::<(), _>(|_| {}, true);
+    runtime.pump::<(), _>(|_| {}, true);
+    assert_eq!(calls.load(Ordering::Relaxed), 2, "registered IPC is delivered once");
+    runtime.context.forget_webview_handlers(7, "pet");
+    assert!(!crate::command_bridge::webview_ready(&client, "pet"));
+    sender.send(request).unwrap();
+    runtime.pump::<(), _>(|_| {}, true);
+    assert_eq!(calls.load(Ordering::Relaxed), 2, "closed owner must not dispatch");
+  }
 
   #[test]
   fn window_creation_preserves_config_icons_and_mixed_constraints() {
