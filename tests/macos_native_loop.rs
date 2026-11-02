@@ -2,9 +2,11 @@
 #[path = "../src/platform/macos_loop.rs"]
 mod macos_loop;
 #[cfg(target_os = "macos")]
+#[allow(dead_code, unused_imports)]
 #[path = "../src/macos_menu.rs"]
 mod macos_menu;
 #[cfg(target_os = "macos")]
+#[allow(dead_code, unused_imports)]
 #[path = "../src/rpc_runtime.rs"]
 mod rpc_runtime;
 
