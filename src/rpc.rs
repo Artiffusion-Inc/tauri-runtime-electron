@@ -1,7 +1,7 @@
 //! Tauri adapters for the upstream-owned Electron protocol.
 
 use electron_rs::RpcRequest;
-pub(crate) use electron_rs::rpc::{app, protocol, webview, window, LogicalPosition};
+pub(crate) use electron_rs::rpc::{app, protocol, webview, window};
 #[cfg(target_os = "macos")]
 pub(crate) use app::{
   Focus as AppFocus, Hide as AppHide, SetActivationPolicy as AppActivationPolicy,

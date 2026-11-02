@@ -171,6 +171,7 @@ jobs:
           path: target/member-evidence
       - name: Report available exact-commit evidence (missing platforms stay unknown)
         run: |
+          mkdir -p target
           node tests/checks/coverage.mjs --md \
             --evidence target/member-evidence --commit "$GITHUB_SHA" \
             --run "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" \
