@@ -1,7 +1,7 @@
 //! Tauri adapters for the upstream-owned Electron protocol.
 
 use electron_rs::RpcRequest;
-pub(crate) use electron_rs::rpc::{app, protocol, webview, window};
+pub(crate) use electron_rs::rpc::{app, protocol, webview, window, LogicalPosition};
 #[cfg(target_os = "macos")]
 pub(crate) use app::{
   Focus as AppFocus, Hide as AppHide, SetActivationPolicy as AppActivationPolicy,
@@ -46,7 +46,8 @@ pub(crate) use window::{
   SetSimpleFullscreen as WindowSimpleFullscreen, SetSize as WindowSize,
   SetSizeConstraints as WindowSizeConstraints, SetSkipTaskbar as WindowSkipTaskbar,
   SetTheme as WindowSetTheme, SetTitle as WindowTitle, SetTitleBarStyle as WindowTitleBarStyle,
-  SetTrafficLight as WindowTrafficLight, SetVisibleOnAllWorkspaces as WindowVisibleOnAllWorkspaces,
+  SetTrafficLight as WindowTrafficLight, StartDrag as WindowStartDrag,
+  SetVisibleOnAllWorkspaces as WindowVisibleOnAllWorkspaces,
   Show as WindowShow, Unmaximize as WindowUnmaximize, Unminimize as WindowUnminimize,
 };
 
@@ -71,7 +72,7 @@ window_requests!(
   WindowSkipTaskbar, WindowTheme, WindowSetTheme, WindowEnabledQuery, WindowCurrentDisplay,
   WindowTrafficLight, WindowUnmaximize, WindowUnminimize, WindowClose, WindowDestroy,
   WindowAlwaysOnTop, WindowVisibleOnAllWorkspaces, WindowContentProtected,
-  WindowProgressBar, WindowOverlayIcon, WindowTitleBarStyle,
+  WindowProgressBar, WindowOverlayIcon, WindowTitleBarStyle, WindowStartDrag,
 );
 
 pub(crate) fn title_bar_style(style: tauri_utils::TitleBarStyle) -> tauri_runtime::Result<window::TitleBarStyle> {

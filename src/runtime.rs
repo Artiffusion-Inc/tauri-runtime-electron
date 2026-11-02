@@ -2194,7 +2194,10 @@ pub(crate) fn create_window_impl<T: UserEvent, F: Fn(RawWindow<'_>) + Send + 'st
   }
 
   // Build all fallible payload data before installing handlers or protocols.
-  let mut payload = window_create_payload(&window_builder, serial)?;
+  let caption_inset = webview
+    .as_ref()
+    .and_then(|webview| webview.webview_attributes.traffic_light_position);
+  let mut payload = window_create_payload(&window_builder, caption_inset, serial)?;
   #[cfg(target_os = "linux")]
   let defer_show = !window_builder.config.closable
     && window_builder.config.visible
@@ -2454,6 +2457,7 @@ pub(crate) fn create_webview_impl<T: UserEvent>(
 
 fn window_create_payload(
   builder: &crate::window_builder::ElectronWindowBuilder,
+  caption_inset: Option<tauri_runtime::dpi::Position>,
   serial: u32,
 ) -> Result<rpc::WindowCreate> {
   let window_icon = builder.icon.as_ref().map(|icon| {
@@ -2473,6 +2477,14 @@ fn window_create_payload(
     .map_err(|error| create_window_err(error.to_string()))?;
   config["titleBarStyle"] = serde_json::to_value(rpc::title_bar_style(builder.config.title_bar_style)?)
     .map_err(|error| create_window_err(error.to_string()))?;
+  // WebviewWindowBuilder parks the macOS caption inset on the webview attributes while
+  // the runtime builder keeps it in the window config; the renderer takes one field.
+  if config["trafficLightPosition"].is_null() {
+    if let Some(position) = caption_inset {
+      let position = position.to_logical::<f64>(1.0);
+      config["trafficLightPosition"] = json!({ "x": position.x, "y": position.y });
+    }
+  }
   Ok(rpc::WindowCreate {
     window_id: serial,
     // Keep unmodeled Tauri settings in the upstream config's extension map.
@@ -2825,7 +2837,7 @@ mod tests {
       })
       .unwrap();
     let payload =
-      serde_json::to_value(window_create_payload(&builder, 42).unwrap()).unwrap();
+      serde_json::to_value(window_create_payload(&builder, None, 42).unwrap()).unwrap();
     // Both typed configs must decode the same Tauri configuration, despite enum casing/omitted nulls.
     let restored: tauri_utils::config::WindowConfig = serde_json::from_value(payload["window"].clone()).unwrap();
     assert_eq!(restored, config);

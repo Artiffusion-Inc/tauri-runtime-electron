@@ -711,18 +711,20 @@ impl<T: UserEvent> WindowDispatch<T> for ElectronWindowDispatcher {
     })
   }
 
-  // Drag a frameless window the Win32 way: hand the window a caption drag.
+  // Win32 hands the window a caption drag; AppKit needs the live press event,
+  // so macOS routes the same request through the renderer's window.
   fn start_dragging(&self) -> Result<()> {
     #[cfg(windows)]
     {
       imp::start_dragging(self.context.native_handle(self.id)?)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
-      crate::runtime::unsupported(
-        "WindowDispatch::start_dragging",
-        "only the Win32 handle can start a native drag",
-      );
+      self.window_call(rpc::WindowStartDrag { window_id: 0 })
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+      crate::runtime::unsupported("WindowDispatch::start_dragging", "no native drag on this platform");
       Ok(())
     }
   }
