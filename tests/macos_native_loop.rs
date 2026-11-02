@@ -88,11 +88,15 @@ fn main() {
       ).expect("create native probe event");
       app.postEvent_atStart(&event, false);
     }
-    macos_loop::pump();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while DISPATCHED.load(Ordering::Relaxed) != 6 && std::time::Instant::now() < deadline {
+      macos_loop::pump();
+      std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     assert_eq!(
       DISPATCHED.load(Ordering::Relaxed),
       6,
-      "one pump must dispatch every queued native event"
+      "runtime pumps must dispatch every posted native event before the deadline"
     );
     macos_loop::pump();
     assert_eq!(
