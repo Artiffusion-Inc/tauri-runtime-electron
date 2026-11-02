@@ -695,7 +695,7 @@ dependencies = [
 [[package]]
 name = "electron-rs"
 version = "0.1.0"
-source = "git+https://github.com/hairyf/electron-rs.git?rev=0f25a49ac691f0e56addc55a890c0cc2cd61c2d2#0f25a49ac691f0e56addc55a890c0cc2cd61c2d2"
+source = "git+https://github.com/hairyf/electron-rs.git?rev=c4a3126ee60d7e80a5e275fc37f124680a3108fd#c4a3126ee60d7e80a5e275fc37f124680a3108fd"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -3258,6 +3258,9 @@ dependencies = [
  "gtk",
  "http",
  "json-patch",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "raw-window-handle",
  "serde",
  "serde_json",

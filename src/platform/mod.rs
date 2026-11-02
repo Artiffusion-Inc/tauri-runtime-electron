@@ -13,6 +13,8 @@ pub(crate) mod dpi;
 pub(crate) mod integrity;
 #[cfg(target_os = "linux")]
 pub(crate) mod linux_window;
+#[cfg(target_os = "macos")]
+pub(crate) mod macos_loop;
 
 pub(crate) fn monitor_from_display(display: &Display) -> Monitor {
   Monitor {

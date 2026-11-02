@@ -686,7 +686,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 [[package]]
 name = "electron-rs"
 version = "0.1.0"
-source = "git+https://github.com/hairyf/electron-rs.git?rev=677b618c1a377f37946631e3e26c7872c25c3ef6#677b618c1a377f37946631e3e26c7872c25c3ef6"
+source = "git+https://github.com/hairyf/electron-rs.git?rev=c4a3126ee60d7e80a5e275fc37f124680a3108fd#c4a3126ee60d7e80a5e275fc37f124680a3108fd"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -3249,6 +3249,9 @@ dependencies = [
  "gtk",
  "http",
  "json-patch",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "raw-window-handle",
  "serde",
  "serde_json",
