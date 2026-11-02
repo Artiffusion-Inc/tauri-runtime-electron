@@ -888,6 +888,8 @@ pub struct ElectronRuntime {
   /// Events pushed by the Electron process (`window.closed`, `ipc.closed`, ...).
   event_rx: Receiver<Value>,
   pending_ipc: RefCell<VecDeque<Value>>,
+  #[cfg(target_os = "macos")]
+  menu_mirror: RefCell<crate::macos_menu::MenuMirror>,
 }
 
 impl ElectronRuntime {
@@ -931,6 +933,8 @@ impl ElectronRuntime {
       run_rx: rx,
       event_rx,
       pending_ipc: Default::default(),
+      #[cfg(target_os = "macos")]
+      menu_mirror: Default::default(),
     }
   }
 
@@ -1392,6 +1396,13 @@ impl ElectronRuntime {
           if let Some(handler) = handler { handler(state); }
         }
         match event["event"].as_str() {
+          #[cfg(target_os = "macos")]
+          Some("app.menuCommand") => {
+            if let Some(command) = event["params"]["commandId"].as_u64().and_then(|id| u32::try_from(id).ok()) {
+              let item = self.menu_mirror.borrow_mut().command(command);
+              if let Some(item) = item { crate::macos_menu::dispatch(&item); }
+            }
+          }
           #[cfg(windows)]
           Some("menu.command") => {
             let params = &event["params"];
@@ -1898,6 +1909,10 @@ impl ElectronRuntime {
       // Native UI (tray icons, menus) lives on this thread and posts window
       // messages here; Electron owns its own process, so nothing else pumps them.
       pump_thread_messages();
+      #[cfg(target_os = "macos")]
+      if let Err(error) = self.menu_mirror.borrow_mut().sync(&self.context.ipc) {
+        eprintln!("[electron] application menu mirror failed: {error}");
+      }
       #[cfg(windows)]
       {
         for (owner, method) in crate::window::imp::take_menu_actions() {
@@ -2744,7 +2759,12 @@ fn init_native_ui() {
   let _ = gtk::init();
 }
 
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(target_os = "macos")]
+fn init_native_ui() {
+  crate::platform::macos_loop::init();
+}
+
+#[cfg(not(unix))]
 fn init_native_ui() {}
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -2754,7 +2774,12 @@ fn pump_thread_messages() {
   }
 }
 
-#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+#[cfg(target_os = "macos")]
+fn pump_thread_messages() {
+  crate::platform::macos_loop::pump();
+}
+
+#[cfg(not(any(windows, unix)))]
 fn pump_thread_messages() {}
 
 #[cfg(test)]

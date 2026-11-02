@@ -28,6 +28,8 @@ mod devtools;
 mod environment;
 mod guest;
 mod locale;
+#[cfg(target_os = "macos")]
+mod macos_menu;
 mod load_state;
 pub use load_state::WebviewLoadState;
 #[cfg(feature = "tauri")]
