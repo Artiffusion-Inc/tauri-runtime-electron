@@ -38,6 +38,7 @@ mod rpc;
 mod rpc_runtime;
 
 mod runtime;
+mod setup;
 mod switches;
 mod webview;
 pub mod window;
@@ -49,7 +50,8 @@ pub use command_bridge::init;
 pub use command_bridge::ElectronClient;
 pub use electron_rs::{Command, CommandChunk, OutputStream};
 pub use environment::DebugEnvironment;
-pub use guest::{with_guest, with_browser_host};
+pub use guest::with_guest;
+pub use setup::WebviewSetup;
 pub use browser::BrowserGuestReservation;
 #[cfg(feature = "tauri")]
 pub use browser::{acquire_browser_guest, release_browser_guest, on_browser_open_requested};

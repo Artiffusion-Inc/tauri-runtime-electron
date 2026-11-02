@@ -2520,6 +2520,7 @@ fn webview_create_payload<T: UserEvent>(
     }),
     auto_resize: Some(attributes.auto_resize),
     init_scripts: Some(initialization_scripts(pending)),
+    preload_scripts: crate::setup::take_preload_scripts(&pending.label),
     data_directory: attributes.data_directory.as_ref().map(|path| path.to_string_lossy().into_owned()),
     incognito: Some(attributes.incognito),
     user_agent: attributes.user_agent.clone(),
@@ -2535,7 +2536,7 @@ fn webview_create_payload<T: UserEvent>(
     background_color: attributes.background_color.map(|color| electron_rs::rpc::Color::Rgba([color.0, color.1, color.2, color.3])),
     policy: Some(policy),
     additional: std::collections::BTreeMap::from([
-      ("browserHost".into(), json!(crate::guest::take_browser_host(&pending.label))),
+      ("browserHost".into(), json!(crate::setup::take_browser_host(&pending.label))),
       ("dragDropEnabled".into(), json!(attributes.drag_drop_handler_enabled)),
       ("zoomHotkeysEnabled".into(), json!(attributes.zoom_hotkeys_enabled)),
       ("scrollBarStyle".into(), json!(scroll_bar_style)),
@@ -2887,6 +2888,46 @@ mod tests {
     assert_eq!(payload["dragDropEnabled"], false);
     assert_eq!(payload["devtools"], false);
     assert_eq!(payload["policy"]["navigation"], true);
+    assert!(
+      payload.get("preloadScripts").is_none(),
+      "a webview without setup options sends no preload sources"
+    );
+  }
+
+  #[test]
+  fn setup_options_reach_the_creation_payload_once() {
+    let setup = crate::setup::WebviewSetup::new("setup-payload")
+      .browser_host()
+      .preload_script("globalThis.first = true")
+      .preload_script("globalThis.second = true");
+    let attributes =
+      tauri_runtime::webview::WebviewAttributes::new(tauri_utils::config::WebviewUrl::default());
+    let pending = PendingWebview::<(), ElectronRuntime>::new(attributes, "setup-payload").unwrap();
+    let payload = serde_json::to_value(webview_create_payload(
+      &pending,
+      9,
+      "http://127.0.0.1:3080",
+      rpc::webview::Policy::default(),
+    ))
+    .unwrap();
+    assert_eq!(
+      payload["preloadScripts"],
+      json!(["globalThis.first = true", "globalThis.second = true"])
+    );
+    assert_eq!(payload["browserHost"], true);
+    let repeated = serde_json::to_value(webview_create_payload(
+      &pending,
+      10,
+      "http://127.0.0.1:3080",
+      rpc::webview::Policy::default(),
+    ))
+    .unwrap();
+    assert!(
+      repeated.get("preloadScripts").is_none(),
+      "setup preload sources are consumed once and never leak into a later webview"
+    );
+    assert_eq!(repeated["browserHost"], false, "the host flag is consumed too");
+    drop(setup);
   }
 
   #[test]
