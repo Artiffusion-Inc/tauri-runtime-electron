@@ -15,8 +15,7 @@ use std::{
 use tauri_runtime::{ExitRequestedEventAction, RunEvent, Runtime, RuntimeHandle, RuntimeInitArgs};
 use tauri_runtime_electron::{ElectronRuntime, ElectronRuntimeHandle};
 
-#[test]
-fn explicit_exit_lifecycle() {
+fn main() {
   if let Ok(mode) = std::env::var("TAURI_ELECTRON_LIFECYCLE_CHILD") {
     exercise(&mode);
     return;
@@ -24,7 +23,6 @@ fn explicit_exit_lifecycle() {
 
   for (mode, expected) in [("return", 0), ("restart", 0), ("run", 23)] {
     let mut child = Command::new(std::env::current_exe().unwrap())
-      .args(["--exact", "explicit_exit_lifecycle", "--nocapture"])
       .env("TAURI_ELECTRON_LIFECYCLE_CHILD", mode)
       .stdout(Stdio::inherit())
       .stderr(Stdio::inherit())

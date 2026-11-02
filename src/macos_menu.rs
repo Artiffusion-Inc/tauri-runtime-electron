@@ -11,6 +11,7 @@ pub(crate) struct MenuMirror {
 }
 
 impl MenuMirror {
+  // ponytail: scan native menus per pump; use mutation hooks if CPU time becomes measurable.
   pub(crate) fn sync(&mut self, ipc: &crate::rpc_runtime::Ipc) -> Result<(), String> {
     objc2::rc::autoreleasepool(|_| {
       let Some(mtm) = MainThreadMarker::new() else {

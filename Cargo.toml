@@ -50,6 +50,10 @@ raw-window-handle = "0.6"
 name = "macos_native_loop"
 harness = false
 
+[[test]]
+name = "runtime_lifecycle"
+harness = false
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSRunningApplication", "NSEvent", "NSResponder", "NSMenu", "NSMenuItem", "NSCell"] }
