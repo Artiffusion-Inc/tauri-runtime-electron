@@ -28,6 +28,8 @@ fn main() {
 
   static LAUNCHES: AtomicUsize = AtomicUsize::new(0);
   static DISPATCHED: AtomicUsize = AtomicUsize::new(0);
+  static EVENTS: AtomicUsize = AtomicUsize::new(0);
+  static APPLICATION_EVENTS: AtomicUsize = AtomicUsize::new(0);
   static MENU_COMMANDS: AtomicUsize = AtomicUsize::new(0);
 
   define_class!(
@@ -48,6 +50,8 @@ fn main() {
 
       #[unsafe(method(sendEvent:))]
       fn send_event(&self, event: &NSEvent) {
+        EVENTS.fetch_add(1, Ordering::Relaxed);
+        if event.r#type() == NSEventType::ApplicationDefined { APPLICATION_EVENTS.fetch_add(1, Ordering::Relaxed); }
         if event.r#type() == NSEventType::ApplicationDefined && event.subtype().0 == 1331 {
           DISPATCHED.fetch_add(event.data1() as usize, Ordering::Relaxed);
         } else {
@@ -92,6 +96,9 @@ fn main() {
         value,
         0,
       ).expect("create native probe event");
+      assert_eq!(event.r#type(), NSEventType::ApplicationDefined);
+      assert_eq!(event.subtype().0, 1331);
+      assert_eq!(event.data1(), value);
       app.postEvent_atStart(&event, false);
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -102,7 +109,9 @@ fn main() {
     assert_eq!(
       DISPATCHED.load(Ordering::Relaxed),
       6,
-      "runtime pumps must dispatch every posted native event before the deadline"
+      "runtime pumps must dispatch posted events: received {} events, {} application events",
+      EVENTS.load(Ordering::Relaxed),
+      APPLICATION_EVENTS.load(Ordering::Relaxed)
     );
     macos_loop::pump();
     assert_eq!(

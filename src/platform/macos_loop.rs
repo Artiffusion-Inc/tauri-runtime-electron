@@ -6,6 +6,7 @@ use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub(crate) fn init() {
   let Some(mtm) = MainThreadMarker::new() else {
+    assert!(cfg!(test), "macOS native UI must run on the main thread");
     return;
   };
   static INITIALIZED: Once = Once::new();
@@ -23,6 +24,7 @@ pub(crate) fn init() {
 
 pub(crate) fn pump() {
   let Some(mtm) = MainThreadMarker::new() else {
+    assert!(cfg!(test), "macOS native UI must run on the main thread");
     return;
   };
   autoreleasepool(|_| {
