@@ -63,6 +63,12 @@ fn main() {
       unsafe { msg_send![ProbeApplication::class(), sharedApplication] };
     macos_loop::init();
     macos_loop::init();
+    std::thread::spawn(|| {
+      macos_loop::init();
+      macos_loop::pump();
+    })
+    .join()
+    .expect("IPC-only workers must not enter AppKit");
     assert_eq!(
       LAUNCHES.load(Ordering::Relaxed),
       1,

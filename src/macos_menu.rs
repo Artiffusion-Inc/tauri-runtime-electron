@@ -13,7 +13,9 @@ pub(crate) struct MenuMirror {
 impl MenuMirror {
   pub(crate) fn sync(&mut self, ipc: &crate::rpc_runtime::Ipc) -> Result<(), String> {
     objc2::rc::autoreleasepool(|_| {
-      let mtm = MainThreadMarker::new().ok_or("macOS menus require the main thread")?;
+      let Some(mtm) = MainThreadMarker::new() else {
+        return Ok(());
+      };
       let app = NSApplication::sharedApplication(mtm);
       let mut items = Vec::new();
       let value = app

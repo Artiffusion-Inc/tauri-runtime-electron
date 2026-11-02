@@ -5,7 +5,9 @@ use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode};
 
 pub(crate) fn init() {
-  let mtm = MainThreadMarker::new().expect("macOS native UI must run on the main thread");
+  let Some(mtm) = MainThreadMarker::new() else {
+    return;
+  };
   static INITIALIZED: Once = Once::new();
   INITIALIZED.call_once(|| {
     autoreleasepool(|_| {
@@ -20,7 +22,9 @@ pub(crate) fn init() {
 }
 
 pub(crate) fn pump() {
-  let mtm = MainThreadMarker::new().expect("macOS native UI must run on the main thread");
+  let Some(mtm) = MainThreadMarker::new() else {
+    return;
+  };
   autoreleasepool(|_| {
     let app = NSApplication::sharedApplication(mtm);
     let deadline = NSDate::distantPast();
