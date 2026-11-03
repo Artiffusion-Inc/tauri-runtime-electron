@@ -38,6 +38,7 @@ pub mod new_window;
 mod platform;
 mod rpc;
 mod rpc_runtime;
+mod shell_open;
 
 mod runtime;
 mod setup;
@@ -59,6 +60,7 @@ pub use browser::BrowserGuestReservation;
 pub use browser::{acquire_browser_guest, release_browser_guest, on_browser_open_requested};
 #[cfg(feature = "tauri")]
 pub use new_window::on_new_window;
+pub use shell_open::{open_external, open_path};
 pub use new_window::{with_opener, NewWindowFeatures, NewWindowOpener, NewWindowResponse};
 pub use runtime::{
   register_custom_protocol_scheme, Electron, ElectronRuntime, EventProxy, RuntimeContext,

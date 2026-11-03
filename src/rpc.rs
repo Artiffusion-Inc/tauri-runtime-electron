@@ -7,7 +7,10 @@ pub(crate) use app::{
   Focus as AppFocus, Hide as AppHide, SetActivationPolicy as AppActivationPolicy,
   SetDockVisibility as AppDockVisibility, Show as AppShow,
 };
-pub(crate) use app::{SetBadgeLabel as AppBadgeLabel, SetTheme as AppTheme};
+pub(crate) use app::{
+  OpenExternal as AppOpenExternal, OpenPath as AppOpenPath, SetBadgeLabel as AppBadgeLabel,
+  SetTheme as AppTheme,
+};
 #[cfg(target_os = "linux")]
 pub(crate) use window::Ready as WindowReady;
 #[cfg(windows)]
@@ -129,6 +132,16 @@ position!(window_traffic_light, WindowTrafficLight);
 mod tests {
   use super::*;
   use tauri_runtime::dpi::{LogicalSize, PhysicalSize, Size};
+
+  #[test]
+  fn shell_open_requests_keep_their_wire_names() {
+    assert_eq!(AppOpenExternal::METHOD, "shell.openExternal");
+    assert_eq!(AppOpenPath::METHOD, "shell.openPath");
+    assert_eq!(
+      serde_json::to_value(AppOpenExternal { url: "https://example.test".into() }).unwrap(),
+      serde_json::json!({ "url": "https://example.test" })
+    );
+  }
 
   #[test]
   fn size_adapters_preserve_units_and_clear_both_limits() {
