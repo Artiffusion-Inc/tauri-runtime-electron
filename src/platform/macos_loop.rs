@@ -13,8 +13,14 @@ pub(crate) fn init() {
   INITIALIZED.call_once(|| {
     autoreleasepool(|_| {
       let app = NSApplication::sharedApplication(mtm);
-      assert!(
-        app.setActivationPolicy(NSApplicationActivationPolicy::Accessory),
+      // `setActivationPolicy:` only reports whether the call changed the policy, and
+      // macOS 27 returns NO when the requested policy is already in effect. The host
+      // bundle ships LSUIElement, so Accessory is already the startup policy and this
+      // call is a no-op there. Verify the effective policy instead of the return value.
+      let _ = app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+      assert_eq!(
+        app.activationPolicy(),
+        NSApplicationActivationPolicy::Accessory,
         "macOS host must remain an accessory application"
       );
       app.finishLaunching();
