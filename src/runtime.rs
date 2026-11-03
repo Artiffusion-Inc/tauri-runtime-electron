@@ -101,6 +101,29 @@ pub(crate) fn create_window_err(message: String) -> Error {
   Error::CreateWindow
 }
 
+fn install_dir_acl_message(dir: &Path) -> String {
+  format!(
+    "ELECTRON_INSTALL_DIR_ACL: {} is missing ALL APPLICATION PACKAGES (S-1-15-2-1) with (OI)(CI)(RX); run `icacls \"{}\" /grant *S-1-15-2-1:(OI)(CI)(RX) /T` and restart",
+    dir.display(),
+    dir.display()
+  )
+}
+
+fn connect_failure_message(binary: &Path, message: String) -> String {
+  #[cfg(windows)]
+  {
+    const SYMPTOMS: [&str; 3] = ["install_dir_access", "STATUS_BREAKPOINT", "0x80000003"];
+    if SYMPTOMS.iter().any(|symptom| message.contains(symptom)) {
+      return format!("{message}\n{}", install_dir_acl_message(binary.parent().unwrap_or(binary)));
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = binary;
+  }
+  message
+}
+
 pub(crate) fn create_webview_err(message: String) -> Error {
   Error::CreateWebview(io_err(message))
 }
@@ -990,7 +1013,7 @@ impl ElectronRuntime {
       args,
       attrs.startup_timeout.unwrap_or(STARTUP_TIMEOUT),
     )
-    .map_err(|error| create_window_err(error.to_string()))?;
+    .map_err(|error| create_window_err(connect_failure_message(&binary, error.to_string())))?;
     let event_rx = ipc
       .events()
       .map_err(|error| create_window_err(error.to_string()))?;
@@ -2785,6 +2808,32 @@ fn pump_thread_messages() {}
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[cfg(windows)]
+  #[test]
+  fn connect_failure_message_names_the_runtime_directory_and_repair_command() {
+    let binary = Path::new("C:\\Users\\me\\AppData\\Local\\Deepseek Harness Desktop\\runtime\\win32-x64\\electron.exe");
+    let message = connect_failure_message(binary, "Electron exited before authenticating (exit code: 0x80000003): electron.exe".into());
+    assert!(message.contains("Electron exited before authenticating"), "{message}");
+    let dir = "C:\\Users\\me\\AppData\\Local\\Deepseek Harness Desktop\\runtime\\win32-x64";
+    assert!(message.contains(dir), "{message}");
+    assert!(message.contains("ELECTRON_INSTALL_DIR_ACL:"), "{message}");
+    assert!(message.contains("ALL APPLICATION PACKAGES"), "{message}");
+    assert!(message.contains("*S-1-15-2-1:(OI)(CI)(RX)"), "{message}");
+    assert!(message.contains(&format!("icacls \"{dir}\" /grant")), "{message}");
+  }
+
+  #[test]
+  fn connect_failure_message_leaves_unrelated_errors_untouched() {
+    let binary = Path::new("C:\\Apps\\electron.exe");
+    for message in [
+      "spawn C:\\Apps\\electron.exe".to_string(),
+      "Electron exited before authenticating (exit code: 1): electron.exe".to_string(),
+    ] {
+      let message = connect_failure_message(binary, message);
+      assert!(!message.contains("ELECTRON_INSTALL_DIR_ACL:"), "{message}");
+    }
+  }
 
   #[cfg(feature = "tauri")]
   #[test]
