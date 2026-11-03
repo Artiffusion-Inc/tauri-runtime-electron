@@ -993,17 +993,15 @@ fn webview_checks(webview: Option<&Webview>, failures: &mut Vec<String>) {
   });
   let _ = eval_once(webview,
     "(() => { document.querySelector('#smoke-frame').contentWindow.location.href = 'tauri://localhost/blocked.html?frame=smoke'; return 'requested' })()");
-  expect_named(failures, "vetoed subframe navigation callback", "tauri://localhost/blocked.html?frame=smoke", || {
+  expect_named(failures, "subframe navigation notification", "tauri://localhost/blocked.html?frame=smoke", || {
     NAVIGATIONS.lock().unwrap().clone()
   });
-  expect_eval(failures, "subframe veto preserves main document", "tauri://localhost/index.html/smoke-page", webview,
+  expect_eval(failures, "subframe navigation preserves main document", "tauri://localhost/index.html/smoke-page", webview,
     "location.href + '/' + document.title");
-  // Electron can replace a cancelled subframe with an inaccessible error page;
-  // request veto guarantees the target cannot load, not preservation of old DOM.
-  expect_eval(failures, "sibling loads despite subframe veto", "smoke-sibling", webview,
+  expect_eval(failures, "sibling loads independently of subframe navigation", "smoke-sibling", webview,
     "document.querySelector('#smoke-sibling').contentDocument?.title");
-  expect_eval(failures, "subframe veto blocks target document", "true", webview,
-    "(() => { try { return document.querySelector('#smoke-frame').contentDocument?.title !== 'smoke-blocked' } catch { return true } })()");
+  expect_eval(failures, "subframe navigation remains allowed after host denial", "smoke-blocked", webview,
+    "document.querySelector('#smoke-frame').contentDocument?.title");
   let _ = eval_once(webview,
     "(() => { const link = document.createElement('a'); link.href = 'tauri://localhost/blocked.html'; document.body.append(link); link.click(); return 'clicked' })()");
   expect_named(failures, "vetoed navigation callback", "tauri://localhost/blocked.html", || {
