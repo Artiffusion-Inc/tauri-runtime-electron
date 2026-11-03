@@ -2809,6 +2809,7 @@ fn pump_thread_messages() {}
 mod tests {
   use super::*;
 
+  #[cfg(windows)]
   #[test]
   fn connect_failure_message_names_the_runtime_directory_and_repair_command() {
     let binary = Path::new("C:\\Users\\me\\AppData\\Local\\Deepseek Harness Desktop\\runtime\\win32-x64\\electron.exe");
