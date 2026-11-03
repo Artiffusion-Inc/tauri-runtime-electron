@@ -46,7 +46,8 @@ pub(crate) use window::{
   SetSimpleFullscreen as WindowSimpleFullscreen, SetSize as WindowSize,
   SetSizeConstraints as WindowSizeConstraints, SetSkipTaskbar as WindowSkipTaskbar,
   SetTheme as WindowSetTheme, SetTitle as WindowTitle, SetTitleBarStyle as WindowTitleBarStyle,
-  SetTrafficLight as WindowTrafficLight, StartDrag as WindowStartDrag,
+  PopupMenu as WindowPopupMenu, SetTrafficLight as WindowTrafficLight,
+  StartDrag as WindowStartDrag,
   SetVisibleOnAllWorkspaces as WindowVisibleOnAllWorkspaces,
   Show as WindowShow, Unmaximize as WindowUnmaximize, Unminimize as WindowUnminimize,
 };

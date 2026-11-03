@@ -22,7 +22,7 @@ pub use tauri_utils::{
 #[cfg(feature = "tauri")]
 mod extension;
 #[cfg(feature = "tauri")]
-pub use extension::{clear_effects, init, set_effects, Window};
+pub use extension::{clear_effects, init, popup_context_menu, set_effects, Window};
 #[cfg(feature = "tauri")]
 pub use tauri::window::EffectsBuilder;
 use tauri_runtime::{
@@ -51,6 +51,36 @@ impl EffectsTarget {
       serial,
       ipc: std::sync::Arc::downgrade(ipc),
     }
+  }
+
+  /// Shows `items` as a native context menu and reports the chosen command id.
+  ///
+  /// Runs the popup through a worker thread: a native menu keeps tracking until
+  /// the user dismisses it, and this call must not stall the runtime's main
+  /// thread while that happens.
+  fn popup_menu(
+    &self,
+    items: Vec<rpc::window::MenuItem>,
+    on_command: impl Fn(u32) + Send + 'static,
+  ) -> std::io::Result<()> {
+    let ipc = self
+      .ipc
+      .upgrade()
+      .ok_or_else(|| std::io::Error::other("Electron runtime has exited"))?;
+    let serial = self.serial;
+    std::thread::spawn(move || {
+      let request = rpc::WindowPopupMenu {
+        window_id: serial,
+        menu: items,
+        x: None,
+        y: None,
+      };
+      match ipc.call(request) {
+        Ok(Some(choice)) => on_command(choice),
+        _ => {}
+      }
+    });
+    Ok(())
   }
 
   fn apply(&self, material: rpc::window::BackgroundMaterial) -> std::io::Result<()> {

@@ -69,6 +69,120 @@ pub fn clear_effects(window: &tauri::Window<ElectronRuntime>) -> tauri::Result<(
   set_effects(window, None)
 }
 
+/// Shows a Tauri menu as a native context menu on this runtime.
+///
+/// Tauri's own `Window::popup_menu` reaches the platform through `ns_view()`/
+/// `hwnd()`; an AppKit view pointer belongs to Electron's process, so macOS
+/// returns `Unavailable` and the popup is silently skipped — the user sees no
+/// menu at all (issue #1370). This routes the same menu through Electron's own
+/// `Menu.popup`, which every platform supports.
+///
+/// Returns once the menu is up; `on_command` receives the activated item's id
+/// after the user dismisses the menu.
+pub fn popup_context_menu(
+  window: &tauri::Window<ElectronRuntime>,
+  menu: &tauri::menu::Menu<ElectronRuntime>,
+  on_command: impl Fn(tauri::menu::MenuId) + Send + 'static,
+) -> tauri::Result<()> {
+  let (items, lookup) = menu_items(menu)?;
+  let (tx, rx) = sync_channel(1);
+  window.run_on_main_thread(move || {
+    let target: Option<EffectsTarget> = EFFECTS_TARGET.with(|slot| slot.borrow().clone());
+    let result = target
+      .ok_or_else(|| std::io::Error::other("Electron window route is unavailable"))
+      .and_then(|target| {
+        target.popup_menu(items, move |command| {
+          if let Some(id) = lookup.get(&command) {
+            on_command(tauri::menu::MenuId::new(id));
+          }
+        })
+      });
+    let _ = tx.send(result);
+  })?;
+  rx.recv_timeout(IPC_TIMEOUT)
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "Electron window task did not finish before timeout"))?
+    .map_err(Into::into)
+}
+
+/// Flattens a Tauri menu into the items Electron's `Menu.popup` accepts, plus the
+/// command-id → item-id map that turns the answer back into a `MenuId`.
+fn menu_items(
+  menu: &tauri::menu::Menu<ElectronRuntime>,
+) -> tauri::Result<(Vec<electron_rs::rpc::window::MenuItem>, std::collections::HashMap<u32, String>)> {
+  use electron_rs::rpc::window::{MenuItem, MenuItemType};
+  use std::collections::HashMap;
+  use tauri::menu::MenuItemKind;
+
+  fn convert(
+    kind: &MenuItemKind<ElectronRuntime>,
+    lookup: &mut HashMap<u32, String>,
+  ) -> Option<MenuItem> {
+    let command = |id: &tauri::menu::MenuId, lookup: &mut HashMap<u32, String>| {
+      let value = command_id(id.as_ref());
+      lookup.insert(value, id.as_ref().to_owned());
+      value
+    };
+    match kind {
+      MenuItemKind::MenuItem(item) => Some(MenuItem {
+        label: Some(item.text().ok()?),
+        enabled: Some(item.is_enabled().unwrap_or(true)),
+        command_id: Some(command(item.id(), lookup)),
+        ..MenuItem::default()
+      }),
+      MenuItemKind::Check(item) => Some(MenuItem {
+        kind: Some(MenuItemType::Checkbox),
+        label: Some(item.text().ok()?),
+        enabled: Some(item.is_enabled().unwrap_or(true)),
+        checked: Some(item.is_checked().unwrap_or(false)),
+        command_id: Some(command(item.id(), lookup)),
+        ..MenuItem::default()
+      }),
+      MenuItemKind::Icon(item) => Some(MenuItem {
+        label: Some(item.text().ok()?),
+        enabled: Some(item.is_enabled().unwrap_or(true)),
+        command_id: Some(command(item.id(), lookup)),
+        ..MenuItem::default()
+      }),
+      MenuItemKind::Submenu(item) => Some(MenuItem {
+        label: Some(item.text().ok()?),
+        enabled: Some(item.is_enabled().unwrap_or(true)),
+        submenu: Some(
+          item
+            .items()
+            .ok()?
+            .iter()
+            .filter_map(|child| convert(child, lookup))
+            .collect(),
+        ),
+        ..MenuItem::default()
+      }),
+      // A predefined separator carries no id of its own and never returns a command.
+      MenuItemKind::Predefined(_) => Some(MenuItem {
+        kind: Some(MenuItemType::Separator),
+        ..MenuItem::default()
+      }),
+    }
+  }
+
+  let mut lookup = HashMap::new();
+  let items = menu
+    .items()?
+    .iter()
+    .filter_map(|kind| convert(kind, &mut lookup))
+    .collect();
+  Ok((items, lookup))
+}
+
+/// Stable numeric id for a menu item, derived from its id.
+fn command_id(id: &str) -> u32 {
+  let mut hash: u32 = 0x811c_9dc5;
+  for byte in id.as_bytes() {
+    hash ^= u32::from(*byte);
+    hash = hash.wrapping_mul(0x0100_0193);
+  }
+  hash
+}
+
 mod commands {
   use super::*;
 
