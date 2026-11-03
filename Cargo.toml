@@ -15,7 +15,7 @@ tauri = ["dep:tauri"]
 devtools = ["tauri-runtime/devtools"]
 
 [build-dependencies]
-electron-rs = { git = "https://github.com/hairyf/electron-rs.git", rev = "c4a3126ee60d7e80a5e275fc37f124680a3108fd" }
+electron-rs = { git = "https://github.com/hairyf/electron-rs.git", rev = "d261c44de4b8dc42d04b5b0ceba77d16a90b3fc6" }
 json-patch = { version = "4", default-features = false }
 serde_json = "1"
 tauri-utils = { version = "2.10", features = ["config-json5", "config-toml"] }
@@ -36,7 +36,7 @@ path = "build_support.rs"
 tauri = { version = "2", default-features = false, features = ["unstable"], optional = true }
 tauri-runtime = "2.12"
 tauri-utils = { version = "2.10", features = ["resources"] }
-electron-rs = { git = "https://github.com/hairyf/electron-rs.git", rev = "c4a3126ee60d7e80a5e275fc37f124680a3108fd" }
+electron-rs = { git = "https://github.com/hairyf/electron-rs.git", rev = "d261c44de4b8dc42d04b5b0ceba77d16a90b3fc6" }
 http = "1"
 cookie = "0.18"
 base64 = "0.22"
